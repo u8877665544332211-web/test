@@ -207,7 +207,7 @@ task.spawn(function()
                 if id then cachedID = id else id = cachedID end
                 if not id then return end
 
-                -- Knife 모드일 때: MB2(우클릭)를 누르고 있을 때만 공격 패킷 전송
+                -- Knife 모드일 때 우클릭(MB2) 입력 감지 (누를 때 칼 스킬 작동)
                 if ragebotMode == "Knife" then
                     if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
                         return
@@ -228,7 +228,7 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- 무기 장착 여부
+-- 무기 장착 여부 검사 (수정: 예외 처리 완화)
 -- ============================================================
 local function hasWeaponEquipped()
     local ok = true
@@ -236,8 +236,14 @@ local function hasWeaponEquipped()
         local ps = LocalPlayer.PlayerScripts
         local s, fc = pcall(require, ps.Controllers.FighterController)
         if not s or not fc or not fc.LocalFighter then return end
-        if not fc.LocalFighter.EquippedItem then ok = false end
+        if not fc.LocalFighter.EquippedItem then 
+            ok = false 
+        end
     end)
+    -- 만약 컨트롤러에서 못찾더라도 캐릭터가 Tool을 들고 있다면 무조건 허용
+    if not ok and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool") then
+        ok = true
+    end
     return ok
 end
 
@@ -272,19 +278,16 @@ RunService.Heartbeat:Connect(function()
             local plr   = Players:GetPlayerFromCharacter(model)
             if plr and get_player_from_part(plr) then return end
 
-            -- Knife 모드이면서 우클릭(MB2)이 눌리지 않았을 때는 텔레포트 작동 방지 (선택 사항)
-            if ragebotMode == "Knife" and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-                return
-            end
-
             L389_46 = hrp.CFrame
             L273_20 = hrp.AssemblyLinearVelocity
 
             local tPos = a73b35c96.Position
 
             if ragebotMode == "Knife" then
-                -- [Knife 모드] 상대방과 완전히 겹치도록 TP (오프셋 0)
-                hrp.CFrame = CFrame.new(tPos, tPos + a73b35c96.CFrame.LookVector)
+                -- [Knife 모드] 우클릭(MB2)을 누르고 있을 때만 상대방과 완전히 겹치도록 TP
+                if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                    hrp.CFrame = CFrame.new(tPos, tPos + a73b35c96.CFrame.LookVector)
+                end
             else
                 -- [Gun 모드] 기존 로직 유지 (칼 소지 여부에 따른 위/아래 TP)
                 local isKnife = false
