@@ -140,7 +140,7 @@ local function get_character_root(char)
 end
 
 -- ============================================================
--- Remote Attack Engine (Gun & Knife 통합)
+-- Remote Attack Engine (Gun 모드 전용)
 -- ============================================================
 local v71190 = function(on) end
 
@@ -192,6 +192,8 @@ task.spawn(function()
 
             local cachedID = nil
             _10O0lO = RunService.Heartbeat:Connect(function()
+                -- Gun 모드일 때만 기존 원격 사격 엔진 작동
+                if ragebotMode ~= "Gun" then return end
                 if not L555_61 or not _2631x704 then return end
                 if not a73b35c96 or not a73b35c96.Parent then return end
 
@@ -207,13 +209,6 @@ task.spawn(function()
                 if id then cachedID = id else id = cachedID end
                 if not id then return end
 
-                -- Knife 모드일 때 우클릭(MB2) 입력 감지 (누를 때 칼 스킬 작동)
-                if ragebotMode == "Knife" then
-                    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
-                        return
-                    end
-                end
-
                 local target = a73b35c96
                 local origin = target.Position + Vector3.new(0, 0.1, 0)
                 local payload = buildPayload(origin, target)
@@ -228,7 +223,24 @@ task.spawn(function()
 end)
 
 -- ============================================================
--- 무기 장착 여부 검사 (수정: 예외 처리 완화)
+-- Knife 모드 자동 공격 루프 (라이벌 기준 우클릭 MB2 칼 활성화)
+-- ============================================================
+RunService.Heartbeat:Connect(function()
+    if not L555_61 or ragebotMode ~= "Knife" then return end
+    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
+
+    pcall(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local tool = char:FindFirstChildOfClass("Tool")
+        if tool then
+            tool:Activate()
+        end
+    end)
+end)
+
+-- ============================================================
+-- 무기 장착 여부 검사
 -- ============================================================
 local function hasWeaponEquipped()
     local ok = true
@@ -240,7 +252,6 @@ local function hasWeaponEquipped()
             ok = false 
         end
     end)
-    -- 만약 컨트롤러에서 못찾더라도 캐릭터가 Tool을 들고 있다면 무조건 허용
     if not ok and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool") then
         ok = true
     end
@@ -278,18 +289,21 @@ RunService.Heartbeat:Connect(function()
             local plr   = Players:GetPlayerFromCharacter(model)
             if plr and get_player_from_part(plr) then return end
 
-            L389_46 = hrp.CFrame
-            L273_20 = hrp.AssemblyLinearVelocity
-
             local tPos = a73b35c96.Position
 
             if ragebotMode == "Knife" then
-                -- [Knife 모드] 우클릭(MB2)을 누르고 있을 때만 상대방과 완전히 겹치도록 TP
+                -- [Knife 모드] 우클릭(MB2)을 누를 때만 상대방과 완전히 겹치도록 TP
                 if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                    L389_46 = hrp.CFrame
+                    L273_20 = hrp.AssemblyLinearVelocity
                     hrp.CFrame = CFrame.new(tPos, tPos + a73b35c96.CFrame.LookVector)
+                    return
                 end
             else
                 -- [Gun 모드] 기존 로직 유지 (칼 소지 여부에 따른 위/아래 TP)
+                L389_46 = hrp.CFrame
+                L273_20 = hrp.AssemblyLinearVelocity
+
                 local isKnife = false
                 pcall(function()
                     if model then
@@ -312,8 +326,8 @@ RunService.Heartbeat:Connect(function()
                 local heightOffset = isKnife and -__lhiRNgvZ or __lhiRNgvZ
                 local goal = tPos + Vector3.new(0, heightOffset, 0)
                 hrp.CFrame = CFrame.new(goal, tPos)
+                return
             end
-            return
         end
 
         if flyEnabled then
