@@ -15,8 +15,6 @@ local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local lp = LocalPlayer
 local Camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
@@ -98,14 +96,81 @@ local L555_61    = false
 local __lhiRNgvZ = 3
 local a73b35c96  = nil
 
+-- 🔹 Ragebot 모드 ("gun" 또는 "knife")
+local RagebotMode = "gun"
+
 local L389_46    = nil
 local L273_20    = nil
 local _10O0lO    = nil
 
--- ★ Ragebot 모드 ("Gun" 또는 "Knife")
-local RagebotMode = "Gun"
--- ★ Knife 모드 우클릭 유지 시간 (초)
-local KnifeHoldTime = 0.05
+-- 🔹 Knife 오토 리모트용 (칼 스윙 / 백스탭)
+local KnifeRemote       = nil
+local KnifeSwingRemote  = nil
+local KnifeCachedID     = nil
+
+-- ============================================================
+-- Knife 리모트 탐색 (Roblox Rivals 기반)
+-- ============================================================
+task.spawn(function()
+    pcall(function()
+        local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+        if not Remotes then return end
+
+        -- 흔한 경로들 탐색: Melee / Knife / Combat / Fighter
+        local searchRoots = {
+            Remotes,
+            Remotes:FindFirstChild("Replication"),
+            Remotes:FindFirstChild("Replication") and Remotes.Replication:FindFirstChild("Fighter"),
+            Remotes:FindFirstChild("Combat"),
+            Remotes:FindFirstChild("Melee"),
+        }
+
+        for _, root in ipairs(searchRoots) do
+            if root then
+                for _, obj in ipairs(root:GetDescendants()) do
+                    if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                        local n = string.lower(obj.Name)
+                        if n:find("knife") or n:find("melee") or n:find("stab") or n:find("slash") or n:find("swing") then
+                            if not KnifeRemote then
+                                KnifeRemote = obj
+                            else
+                                KnifeSwingRemote = obj
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+end)
+
+-- Knife ObjectID 캐시 (칼 장착 시)
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        pcall(function()
+            local ps = LocalPlayer.PlayerScripts
+            local okFighter, FighterController = pcall(require, ps.Controllers.FighterController)
+            if not (okFighter and FighterController) then return end
+            local lf = FighterController.LocalFighter
+            if not lf then return end
+            local item = lf.EquippedItem
+            if not item then return end
+            local ok, id = pcall(function() return item:Get("ObjectID") end)
+            if not ok or not id then
+                ok, id = pcall(function() return item.Data and item.Data.ObjectID end)
+            end
+            if ok and id then
+                -- 칼인지 이름으로 확인
+                local nm = ""
+                pcall(function() nm = string.lower(tostring(item.Name or item.Data and item.Data.Name or "")) end)
+                if nm:find("knife") or nm:find("karambit") or nm:find("melee") or nm:find("dagger") or nm:find("blade") then
+                    KnifeCachedID = id
+                end
+            end
+        end)
+    end
+end)
 
 -- ============================================================
 -- Desync 타이밍 루프
@@ -143,20 +208,7 @@ local function get_character_root(char)
 end
 
 -- ============================================================
--- ★ Knife 모드용 MB2(우클릭) 시뮬레이션
--- ============================================================
-local function fireMouseRightClick()
-    pcall(function()
-        -- 우클릭 Down (button = 1 → Right)
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 0)
-        task.wait(KnifeHoldTime)
-        -- 우클릭 Up
-        VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
-    end)
-end
-
--- ============================================================
--- Remote Attack Engine
+-- Remote Attack Engine (GUN)
 -- ============================================================
 local v71190 = function(on) end
 
@@ -208,6 +260,8 @@ task.spawn(function()
 
             local cachedID = nil
             _10O0lO = RunService.Heartbeat:Connect(function()
+                -- 🔹 gun 모드일 때만 발사
+                if RagebotMode ~= "gun" then return end
                 if not L555_61 or not _2631x704 then return end
                 if not a73b35c96 or not a73b35c96.Parent then return end
 
@@ -219,21 +273,12 @@ task.spawn(function()
                 local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
 
-                local target = a73b35c96
-                local origin = target.Position + Vector3.new(0, 0.1, 0)
-
-                -- ★ 모드 분기
-                if RagebotMode == "Knife" then
-                    -- Knife 모드: MB2 우클릭 시뮬레이션
-                    fireMouseRightClick()
-                    return
-                end
-
-                -- Gun 모드: 기존 UseItem Remote 로직
                 local id = getObjectID()
                 if id then cachedID = id else id = cachedID end
                 if not id then return end
 
+                local target = a73b35c96
+                local origin = target.Position + Vector3.new(0, 0.1, 0)
                 local payload = buildPayload(origin, target)
                 pcall(function()
                     if id and StartShooting then
@@ -276,7 +321,7 @@ pcall(function() RunService:BindToRenderStep("RestoreDesyncPerfect", 0, restore_
 RunService.RenderStepped:Connect(restore_desync_position)
 
 -- ============================================================
--- Heartbeat Desync Teleport (모드별 분기)
+-- Heartbeat Desync Teleport + Knife TP
 -- ============================================================
 RunService.Heartbeat:Connect(function()
     pcall(function()
@@ -295,11 +340,8 @@ RunService.Heartbeat:Connect(function()
 
             local tPos = a73b35c96.Position
 
-            -- ★ 모드 분기: Knife 모드는 상대와 완전히 겹침, Gun 모드는 기존 로직
-            local heightOffset = 0
-
-            if RagebotMode == "Gun" then
-                -- 상대방이 칼(Knife)을 들고 있는지 확인
+            -- 🔹 gun 모드: 기존 로직 (칼 든 상대면 아래, 아니면 위)
+            if RagebotMode == "gun" then
                 local isKnife = false
                 pcall(function()
                     if model then
@@ -319,14 +361,28 @@ RunService.Heartbeat:Connect(function()
                     end
                 end)
 
-                -- 칼을 들었으면 아래로(-__lhiRNgvZ), 아니면 위로(+__lhiRNgvZ)
-                heightOffset = isKnife and -__lhiRNgvZ or __lhiRNgvZ
+                local heightOffset = isKnife and -__lhiRNgvZ or __lhiRNgvZ
+                local goal = tPos + Vector3.new(0, heightOffset, 0)
+                hrp.CFrame = CFrame.new(goal, tPos)
+                return
             end
-            -- Knife 모드: heightOffset = 0 → 상대와 완전히 겹침
 
-            local goal = tPos + Vector3.new(0, heightOffset, 0)
-            hrp.CFrame = CFrame.new(goal, tPos)
-            return
+            -- 🔹 knife 모드: 상대와 완전히 겹치게 (백스탭 각도 확보용으로 살짝 뒤)
+            if RagebotMode == "knife" then
+                -- 상대 루트 기준으로 뒤쪽(Back) 오프셋을 잡아 백스탭 히트박스에 붙임
+                local targetHRP = model and model:FindFirstChild("HumanoidRootPart")
+                local backOffset
+                if targetHRP then
+                    -- 상대의 LookVector 뒤쪽 (등 방향)
+                    backOffset = targetHRP.CFrame.LookVector * 0.6
+                else
+                    backOffset = Vector3.new(0, 0, 0)
+                end
+
+                local goal = tPos + Vector3.new(0, 0, 0) + backOffset
+                hrp.CFrame = CFrame.new(goal, tPos)
+                return
+            end
         end
 
         if flyEnabled then
@@ -380,20 +436,54 @@ task.spawn(function()
     end
 end)
 
+-- ============================================================
+-- 🔹 KNIFE AUTO REMOTE (칼 자동 원격 스윙/백스탭)
+-- ============================================================
+task.spawn(function()
+    while true do
+        task.wait(0.05)
+        if RagebotMode == "knife" and L555_61 and _2631x704
+           and a73b35c96 and a73b35c96.Parent and KnifeRemote then
+
+            local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local targetPos = a73b35c96.Position
+                local dir = (targetPos - hrp.Position)
+                if dir.Magnitude > 0.001 then dir = dir.Unit else dir = hrp.CFrame.LookVector end
+
+                -- 칼 리모트 파라미터: 게임마다 다를 수 있으므로 여러 시그니처 시도
+                pcall(function() KnifeRemote:FireServer() end)
+                pcall(function() KnifeRemote:FireServer("Slash") end)
+                pcall(function() KnifeRemote:FireServer("Backstab") end)
+                pcall(function() KnifeRemote:FireServer(KnifeCachedID or 0) end)
+                pcall(function() KnifeRemote:FireServer(KnifeCachedID or 0, "Backstab") end)
+                pcall(function() KnifeRemote:FireServer(hrp.CFrame, dir) end)
+                pcall(function() KnifeRemote:FireServer(KnifeCachedID or 0, hrp.CFrame, a73b35c96) end)
+
+                if KnifeSwingRemote then
+                    pcall(function() KnifeSwingRemote:FireServer() end)
+                    pcall(function() KnifeSwingRemote:FireServer("Slash") end)
+                    pcall(function() KnifeSwingRemote:FireServer(KnifeCachedID or 0) end)
+                end
+            end
+        end
+    end
+end)
+
 -- ==========================================
 -- Combat 탭 UI 구성
 -- ==========================================
 local RagebotGroup = Tabs.Combat:AddLeftGroupbox('Ragebot')
 
--- ★ Ragebot 모드 선택 드롭다운
+-- 🔹 모드 선택 (gun / knife)
 RagebotGroup:AddDropdown('RagebotMode', {
-    Values = { 'Gun', 'Knife' },
-    Default = 'Gun',
+    Values = { 'gun', 'knife' },
+    Default = 1,
     Multi = false,
-    Text = 'Ragebot Mode',
-    Tooltip = 'Gun: 원거리 총 자동 발사 / Knife: 상대와 겹쳐서 우클릭 자동 사용',
+    Text = 'Mode',
+    Tooltip = 'gun = 기본 발사 레이지봇 / knife = 상대와 겹쳐 백스탭',
     Callback = function(Value)
-        RagebotMode = Value
+        RagebotMode = tostring(Value)
     end
 })
 
@@ -449,18 +539,5 @@ RagebotGroup:AddSlider('RagebotAttack', {
     Compact = false,
     Callback = function(Value)
         a85b57c99 = Value
-    end
-})
-
--- ★ Knife 모드 전용 우클릭 홀드 시간 슬라이더
-RagebotGroup:AddSlider('RagebotKnifeHold', {
-    Text = 'Knife Hold Time',
-    Default = 0.05,
-    Min = 0.01,
-    Max = 0.5,
-    Rounding = 2,
-    Compact = false,
-    Callback = function(Value)
-        KnifeHoldTime = Value
     end
 })
