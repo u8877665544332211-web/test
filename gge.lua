@@ -99,11 +99,14 @@ local a73b35c96  = nil
 -- 🔹 Ragebot 모드 ("gun" 또는 "knife")
 local RagebotMode = "gun"
 
+-- 🔹 knife 모드 TP 뒤쪽 거리 (스터드)
+local KnifeBackStuds = 2
+
 local L389_46    = nil
 local L273_20    = nil
 local _10O0lO    = nil
 
--- 🔹 Knife 오토 리모트용 (칼 스윙 / 백스탭)
+-- 🔹 Knife 오토 리모트용
 local KnifeRemote       = nil
 local KnifeSwingRemote  = nil
 local KnifeCachedID     = nil
@@ -116,7 +119,6 @@ task.spawn(function()
         local Remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
         if not Remotes then return end
 
-        -- 흔한 경로들 탐색: Melee / Knife / Combat / Fighter
         local searchRoots = {
             Remotes,
             Remotes:FindFirstChild("Replication"),
@@ -161,7 +163,6 @@ task.spawn(function()
                 ok, id = pcall(function() return item.Data and item.Data.ObjectID end)
             end
             if ok and id then
-                -- 칼인지 이름으로 확인
                 local nm = ""
                 pcall(function() nm = string.lower(tostring(item.Name or item.Data and item.Data.Name or "")) end)
                 if nm:find("knife") or nm:find("karambit") or nm:find("melee") or nm:find("dagger") or nm:find("blade") then
@@ -367,20 +368,25 @@ RunService.Heartbeat:Connect(function()
                 return
             end
 
-            -- 🔹 knife 모드: 상대와 완전히 겹치게 (백스탭 각도 확보용으로 살짝 뒤)
+            -- 🔹 knife 모드: 상대 등 뒤 KnifeBackStuds 스터드 위치로 TP
+            --              + 내 캐릭터가 "상대가 바라보는 방향"과 같은 방향을 바라보게 회전
             if RagebotMode == "knife" then
-                -- 상대 루트 기준으로 뒤쪽(Back) 오프셋을 잡아 백스탭 히트박스에 붙임
                 local targetHRP = model and model:FindFirstChild("HumanoidRootPart")
                 local backOffset
+                local lookTarget
+
                 if targetHRP then
-                    -- 상대의 LookVector 뒤쪽 (등 방향)
-                    backOffset = targetHRP.CFrame.LookVector * 0.1
+                    -- 상대의 LookVector 반대 방향 = 등 뒤 → KnifeBackStuds 스터드
+                    backOffset = targetHRP.CFrame.LookVector * KnifeBackStuds
+                    -- 내가 바라볼 지점 = 상대 위치 + 상대의 시선 방향 → 상대와 같은 방향을 봄
+                    lookTarget = tPos + targetHRP.CFrame.LookVector
                 else
                     backOffset = Vector3.new(0, 0, 0)
+                    lookTarget = tPos
                 end
 
-                local goal = tPos + Vector3.new(0, 0, 0) + backOffset
-                hrp.CFrame = CFrame.new(goal, tPos)
+                local goal = tPos + backOffset
+                hrp.CFrame = CFrame.new(goal, lookTarget)
                 return
             end
         end
@@ -451,7 +457,6 @@ task.spawn(function()
                 local dir = (targetPos - hrp.Position)
                 if dir.Magnitude > 0.001 then dir = dir.Unit else dir = hrp.CFrame.LookVector end
 
-                -- 칼 리모트 파라미터: 게임마다 다를 수 있으므로 여러 시그니처 시도
                 pcall(function() KnifeRemote:FireServer() end)
                 pcall(function() KnifeRemote:FireServer("Slash") end)
                 pcall(function() KnifeRemote:FireServer("Backstab") end)
@@ -481,7 +486,7 @@ RagebotGroup:AddDropdown('RagebotMode', {
     Default = 1,
     Multi = false,
     Text = 'Mode',
-    Tooltip = 'gun = 기본 발사 레이지봇 / knife = 상대와 겹쳐 백스탭',
+    Tooltip = 'gun = 기본 발사 레이지봇 / knife = 상대 등 뒤로 TP 후 칼 오토 리모트',
     Callback = function(Value)
         RagebotMode = tostring(Value)
     end
@@ -539,5 +544,18 @@ RagebotGroup:AddSlider('RagebotAttack', {
     Compact = false,
     Callback = function(Value)
         a85b57c99 = Value
+    end
+})
+
+-- 🔹 knife 모드 뒤쪽 거리 슬라이더
+RagebotGroup:AddSlider('KnifeBackStuds', {
+    Text = 'Knife Back Studs',
+    Default = 2,
+    Min = 0.5,
+    Max = 6,
+    Rounding = 1,
+    Compact = false,
+    Callback = function(Value)
+        KnifeBackStuds = Value
     end
 })
