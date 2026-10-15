@@ -6,13 +6,24 @@ local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 local Toggles = getgenv().Toggles or Library.Toggles
 local Options = getgenv().Options or Library.Options
 
+-- ==========================================
+-- Services & Local Player 설정
+-- ==========================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris = game:GetService("Debris")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
+local lp = LocalPlayer
+local Camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Global Config & State Table (통합 관리)
+getgenv().Config = getgenv().Config or {}
+getgenv().State = getgenv().State or {}
 
 local Window = Library:CreateWindow({
     Title = 'Yumu Enchantment - discord.gg/qTV5c5Fn6',
@@ -23,30 +34,24 @@ local Window = Library:CreateWindow({
 })
 
 local Tabs = {
-    Main = Window:AddTab('Main'),
+    Combat = Window:AddTab('Combat'),
     Visuals = Window:AddTab('Visuals'),
-    character = Window:AddTab('character'),
+    Character = Window:AddTab('Character'),
     Misc = Window:AddTab('Misc'),
     Setting = Window:AddTab('Setting')
 }
 
-
--- ==========================================
--- Services & Local Player 설정
--- ==========================================
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LocalPlayer = Players.LocalPlayer
-
+-- ============================================================
+-- 헬퍼
+-- ============================================================
 local _0l1lOIIII0 = true
 
 local function is_teammate(player)
     if not _0l1lOIIII0 then return false end
-    local _357_939 = LocalPlayer:GetAttribute("TeamID")
-    local L880_33 = player:GetAttribute("TeamID")
-    if _357_939 == nil or L880_33 == nil then return false end
-    return L880_33 == _357_939
+    local a = LocalPlayer:GetAttribute("TeamID")
+    local b = player:GetAttribute("TeamID")
+    if a == nil or b == nil then return false end
+    return a == b
 end
 
 local function get_character(playerOrChar)
@@ -56,14 +61,14 @@ local function get_character(playerOrChar)
     end
     if not char then return true end
     if char:FindFirstChildOfClass("ForceField") then return true end
-    local __BfgstqWnead = char:FindFirstChild("HumanoidRootPart")
-    if __BfgstqWnead and __BfgstqWnead:FindFirstChild("Attachment") then return true end
-    local _IlO1IIIIOl1I = char:GetAttribute("Immune") or char:GetAttribute("Invincible") or char:GetAttribute("IsImmune")
-    if _IlO1IIIIOl1I == true then return true end
-    local a87b18c82 = char:FindFirstChildOfClass("Humanoid")
-    if a87b18c82 then
-        local _7665x159 = a87b18c82:GetAttribute("Immune") or a87b18c82:GetAttribute("Invincible")
-        if _7665x159 == true then return true end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if hrp and hrp:FindFirstChild("Attachment") then return true end
+    local flag = char:GetAttribute("Immune") or char:GetAttribute("Invincible") or char:GetAttribute("IsImmune")
+    if flag == true then return true end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        local f2 = hum:GetAttribute("Immune") or hum:GetAttribute("Invincible")
+        if f2 == true then return true end
     end
     return false
 end
@@ -71,44 +76,47 @@ end
 local function get_player_from_part(player)
     local char = player and player.Character
     if not char then return false end
-    local _8898x144 = {"Reflecting", "IsReflecting", "BulletReflect", "Reflect", "Deflecting", "Parrying"}
-    for _, a in ipairs(_8898x144) do
-        local _01O001l00 = char:GetAttribute(a)
-        if _01O001l00 == true or _01O001l00 == 1 or _01O001l00 == "true" then return true end
+    local flags = {"Reflecting","IsReflecting","BulletReflect","Reflect","Deflecting","Parrying"}
+    for _, k in ipairs(flags) do
+        local v = char:GetAttribute(k)
+        if v == true or v == 1 or v == "true" then return true end
     end
     return false
 end
 
--- ==========================================
--- Desync & Ragebot Main Logic 변수 정의
--- ==========================================
-local _2631x704 = true
+-- ============================================================
+-- 변수
+-- ============================================================
+local _2631x704  = true
 local flyEnabled = false
-local _8080x566 = 50000000
-local _lII0ll = false
-local _4012x732 = 0.25
-local a85b57c99 = 0.1
-local L555_61 = false
-local __lhiRNgvZ = 3 
-local a73b35c96 = nil
+local _8080x566  = 50000000
+local _lII0ll    = false
+local _4012x732  = 0.25
+local a85b57c99  = 0.1
+local L555_61    = false
+local __lhiRNgvZ = 3
+local a73b35c96  = nil
+local RagebotMode = "Gun" -- 기본 모드 설정
 
--- Desync 위치/속도 버퍼
-local L389_46 = nil
-local L273_20 = nil
-local _10O0lO = nil
+local L389_46    = nil
+local L273_20    = nil
+local _10O0lO    = nil
 
+-- ============================================================
+-- Desync 타이밍 루프
+-- ============================================================
 task.spawn(function()
     while true do
         if _lII0ll and L555_61 then
             _2631x704 = true
-            local _3661x412 = a85b57c99
-            if typeof(_3661x412) ~= "number" or _3661x412 < 0.01 then _3661x412 = 0.01 end
-            task.wait(_3661x412)
+            local atk = a85b57c99
+            if typeof(atk) ~= "number" or atk < 0.01 then atk = 0.01 end
+            task.wait(atk)
             if _lII0ll and L555_61 then
                 _2631x704 = false
-                local _0xdee6 = _4012x732
-                if typeof(_0xdee6) ~= "number" or _0xdee6 < 0.01 then _0xdee6 = 0.01 end
-                task.wait(_0xdee6)
+                local hid = _4012x732
+                if typeof(hid) ~= "number" or hid < 0.01 then hid = 0.01 end
+                task.wait(hid)
             else
                 _2631x704 = true
             end
@@ -119,6 +127,9 @@ task.spawn(function()
     end
 end)
 
+-- ============================================================
+-- 타겟 헤드 반환
+-- ============================================================
 local function get_character_root(char)
     if not char then return nil end
     return char:FindFirstChild("HitboxHead")
@@ -126,45 +137,48 @@ local function get_character_root(char)
         or char:FindFirstChild("Head")
 end
 
+-- ============================================================
+-- Remote Attack Engine (Gun 모드용) & Knife 우클릭 공격 루프
+-- ============================================================
 local v71190 = function(on) end
 
--- Remote Attack Engine
 task.spawn(function()
     pcall(function()
-        local _3213x326 = LocalPlayer.PlayerScripts
-        local a66b43c59, _9817x625 = pcall(require, _3213x326.Controllers.FighterController)
-        local _0xd857, v27885     = pcall(require, ReplicatedStorage.Modules.EnumLibrary)
-        local __MAwXiJM    = ReplicatedStorage.Remotes.Replication.Fighter.UseItem
-        local _IIOl1OI11O00; pcall(function() _IIOl1OI11O00 = v27885:ToEnum("StartShooting") end)
+        local ps = LocalPlayer.PlayerScripts
+        local okFighter, FighterController = pcall(require, ps.Controllers.FighterController)
+        local okEnum, EnumLibrary           = pcall(require, ReplicatedStorage.Modules.EnumLibrary)
+        local UseItemRemote = ReplicatedStorage.Remotes.Replication.Fighter.UseItem
+        local StartShooting
+        pcall(function() StartShooting = EnumLibrary:ToEnum("StartShooting") end)
 
-        local function _5460x742()
-            if not (a66b43c59 and _9817x625) then return nil end
-            local _0x3584 = _9817x625.LocalFighter; if not _0x3584 then return nil end
-            local _549_282 = _0x3584.EquippedItem; if not _549_282 then return nil end
-            local L704_40, L987_53 = pcall(function() return _549_282:Get("ObjectID") end)
-            if L704_40 and L987_53 then return L987_53 end
-            L704_40, L987_53 = pcall(function() return _549_282.Data and _549_282.Data.ObjectID end)
-            return L704_40 and L987_53 or nil
+        local function getObjectID()
+            if not (okFighter and FighterController) then return nil end
+            local lf = FighterController.LocalFighter; if not lf then return nil end
+            local item = lf.EquippedItem;              if not item then return nil end
+            local ok, id = pcall(function() return item:Get("ObjectID") end)
+            if ok and id then return id end
+            ok, id = pcall(function() return item.Data and item.Data.ObjectID end)
+            return ok and id or nil
         end
 
-        local function teleport_character(originPos, _IOI1l0I100)
-            local L501_16 = _IOI1l0I100.Position
-            local _0xb60d = CFrame.lookAt(originPos, L501_16)
-            local _0Il0I11O, _1897x442, _0xefad = _0xb60d:ToOrientation()
-            local a49b75c71 = {
+        local function buildPayload(originPos, targetPart)
+            local tPos = targetPart.Position
+            local lookCF = CFrame.lookAt(originPos, tPos)
+            local rx, ry, rz = lookCF:ToOrientation()
+            local rot = {
                 [utf8.char(0)] = originPos.X, [utf8.char(1)] = originPos.Y, [utf8.char(2)] = originPos.Z,
-                [utf8.char(3)] = _0Il0I11O, [utf8.char(4)] = _1897x442, [utf8.char(5)] = _0xefad,
+                [utf8.char(3)] = rx,          [utf8.char(4)] = ry,          [utf8.char(5)] = rz,
             }
-            local a12b15c22 = _IOI1l0I100.CFrame:ToObjectSpace(CFrame.new(L501_16))
-            local _lOl1lI0llll0, _1l00IOl101Il, __CtOClXPOnz = a12b15c22:ToOrientation()
+            local rel = targetPart.CFrame:ToObjectSpace(CFrame.new(tPos))
+            local ox, oy, oz = rel:ToOrientation()
             return {
                 [utf8.char(1)] = {
-                    [utf8.char(0)] = a49b75c71,
-                    [utf8.char(1)] = a49b75c71,
-                    [utf8.char(2)] = _IOI1l0I100,
+                    [utf8.char(0)] = rot,
+                    [utf8.char(1)] = rot,
+                    [utf8.char(2)] = targetPart,
                     [utf8.char(3)] = {
-                        [utf8.char(0)] = a12b15c22.X, [utf8.char(1)] = a12b15c22.Y, [utf8.char(2)] = a12b15c22.Z,
-                        [utf8.char(3)] = _lOl1lI0llll0, [utf8.char(4)] = _1l00IOl101Il, [utf8.char(5)] = __CtOClXPOnz,
+                        [utf8.char(0)] = rel.X, [utf8.char(1)] = rel.Y, [utf8.char(2)] = rel.Z,
+                        [utf8.char(3)] = ox,    [utf8.char(4)] = oy,    [utf8.char(5)] = oz,
                     },
                 },
             }
@@ -174,52 +188,67 @@ task.spawn(function()
             if _10O0lO then _10O0lO:Disconnect(); _10O0lO = nil end
             if not on then return end
 
-            local _l0OIIO = nil
+            local cachedID = nil
             _10O0lO = RunService.Heartbeat:Connect(function()
                 if not L555_61 or not _2631x704 then return end
                 if not a73b35c96 or not a73b35c96.Parent then return end
 
-                local a20b32c46 = a73b35c96:FindFirstAncestorOfClass("Model") or a73b35c96.Parent
-                local a14b42c70 = Players:GetPlayerFromCharacter(a20b32c46)
-                if not a14b42c70 or a14b42c70 == LocalPlayer then return end
-                if is_teammate(a14b42c70) or get_character(a14b42c70) or get_player_from_part(a14b42c70) then return end
+                local model = a73b35c96:FindFirstAncestorOfClass("Model") or a73b35c96.Parent
+                local plr   = Players:GetPlayerFromCharacter(model)
+                if not plr or plr == LocalPlayer then return end
+                if is_teammate(plr) or get_character(plr) or get_player_from_part(plr) then return end
 
-                local _lO00OO0 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                if not _lO00OO0 then return end
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
 
-                local _0xf72a = _5460x742()
-                if _0xf72a then _l0OIIO = _0xf72a else _0xf72a = _l0OIIO end
-                if not _0xf72a then return end
+                if RagebotMode == "Gun" then
+                    local id = getObjectID()
+                    if id then cachedID = id else id = cachedID end
+                    if not id then return end
 
-                local L405_52 = a73b35c96
-                local _0Ol00I01OO0l = L405_52.Position + Vector3.new(0, 0.1, 0)
-                local v84604 = teleport_character(_0Ol00I01OO0l, L405_52)
-                pcall(function()
-                    __MAwXiJM:FireServer(_0xf72a, _IIOl1OI11O00, v84604, nil)
-                end)
+                    local target = a73b35c96
+                    local origin = target.Position + Vector3.new(0, 0.1, 0)
+                    local payload = buildPayload(origin, target)
+                    pcall(function()
+                        if id and StartShooting then
+                            UseItemRoot:FireServer(id, StartShooting, payload, nil) -- 수정된 부분
+                        end
+                    end)
+                elseif RagebotMode == "Knife" then
+                    -- Knife 모드일 때 마우스 우클릭 시뮬레이션 (공격)
+                    pcall(function()
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 0)
+                        task.wait(0.05)
+                        VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
+                    end)
+                end
             end)
         end
     end)
 end)
 
-local function find_closest_target()
-    local v83548 = true
+-- ============================================================
+-- 무기 장착 여부
+-- ============================================================
+local function hasWeaponEquipped()
+    local ok = true
     pcall(function()
-        local _3213x326 = LocalPlayer.PlayerScripts
-        local _0x9ec3, _0lO010OIIO = pcall(require, _3213x326.Controllers.FighterController)
-        if not _0x9ec3 or not _0lO010OIIO or not _0lO010OIIO.LocalFighter then return end
-        local _549_282 = _0lO010OIIO.LocalFighter.EquippedItem
-        if not _549_282 then v83548 = false; return end
+        local ps = LocalPlayer.PlayerScripts
+        local s, fc = pcall(require, ps.Controllers.FighterController)
+        if not s or not fc or not fc.LocalFighter then return end
+        if not fc.LocalFighter.EquippedItem then ok = false end
     end)
-    return v83548
+    return ok
 end
 
--- Desync 위치 복구 핸들러
+-- ============================================================
+-- Desync 위치 복구
+-- ============================================================
 local function restore_desync_position()
-    local __BfgstqWnead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not __BfgstqWnead or not L389_46 then return end
-    __BfgstqWnead.CFrame = L389_46
-    if L273_20 then __BfgstqWnead.AssemblyLinearVelocity = L273_20 end
+    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp or not L389_46 then return end
+    hrp.CFrame = L389_46
+    if L273_20 then hrp.AssemblyLinearVelocity = L273_20 end
     L389_46 = nil
     L273_20 = nil
 end
@@ -228,67 +257,100 @@ pcall(function() RunService:UnbindFromRenderStep("RestoreDesyncPerfect") end)
 pcall(function() RunService:BindToRenderStep("RestoreDesyncPerfect", 0, restore_desync_position) end)
 RunService.RenderStepped:Connect(restore_desync_position)
 
--- Heartbeat Desync Teleport 루프
+-- ============================================================
+-- Heartbeat Desync Teleport (수정 완료)
+-- ============================================================
 RunService.Heartbeat:Connect(function()
     pcall(function()
-        local __BfgstqWnead = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if not __BfgstqWnead then return end
+        local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
 
         if L389_46 then restore_desync_position() end
 
-        -- Target Attack Teleport (Ragebot Desync)
-        if L555_61 and _2631x704 and a73b35c96 and find_closest_target() then
-            local _3921x508 = a73b35c96:FindFirstAncestorOfClass("Model") or a73b35c96.Parent
-            local _456_638 = Players:GetPlayerFromCharacter(_3921x508)
-            if _456_638 and get_player_from_part(_456_638) then return end
+        if L555_61 and _2631x704 and a73b35c96 and hasWeaponEquipped() then
+            local model = a73b35c96:FindFirstAncestorOfClass("Model") or a73b35c96.Parent
+            local plr   = Players:GetPlayerFromCharacter(model)
+            if plr and get_player_from_part(plr) then return end
+
+            L389_46 = hrp.CFrame
+            L273_20 = hrp.AssemblyLinearVelocity
+
+            local tPos = a73b35c96.Position
+            local goal = tPos
+
+            if RagebotMode == "Gun" then
+                -- 기존 Gun 모드: 칼 소지 여부에 따라 위/아래 텔포
+                local isKnife = false
+                pcall(function()
+                    if model then
+                        for _, item in ipairs(model:GetChildren()) do
+                            if item:IsA("Tool") and string.lower(item.Name):find("knife") then
+                                isKnife = true
+                                break
+                            end
+                        end
+                    end
+                    local charModel = plr and plr.Character
+                    if charModel then
+                        local tool = charModel:FindFirstChildOfClass("Tool")
+                        if tool and string.lower(tool.Name):find("knife") then
+                            isKnife = true
+                        end
+                    end
+                end)
+                local heightOffset = isKnife and -__lhiRNgvZ or __lhiRNgvZ
+                goal = tPos + Vector3.new(0, heightOffset, 0)
+            elseif RagebotMode == "Knife" then
+                -- Knife 모드: 상대방과 완전히 겹치도록 텔포
+                goal = tPos
+            end
             
-            L389_46 = __BfgstqWnead.CFrame
-            L273_20 = __BfgstqWnead.AssemblyLinearVelocity
-            
-            local L501_16 = a73b35c96.Position
-            local _7279x484 = L501_16 + Vector3.new(0, __lhiRNgvZ, 0)
-            __BfgstqWnead.CFrame = CFrame.new(_7279x484, L501_16)
+            hrp.CFrame = CFrame.new(goal, tPos)
             return
         end
 
-        -- Orbit Fly Desync
         if flyEnabled then
-            L389_46 = __BfgstqWnead.CFrame
-            L273_20 = __BfgstqWnead.AssemblyLinearVelocity
-            local _687_388 = Vector3.new(math.random(-100, 100), math.random(-100, 100), math.random(-100, 100)).Unit
-            local _7279x484 = __BfgstqWnead.Position + _687_388 * _8080x566
-            local _OIOO0O1 = L389_46 - L389_46.Position
-            __BfgstqWnead.CFrame = CFrame.new(_7279x484) * _OIOO0O1
+            L389_46 = hrp.CFrame
+            L273_20 = hrp.AssemblyLinearVelocity
+            local dir = Vector3.new(math.random(-100,100), math.random(-100,100), math.random(-100,100)).Unit
+            local goal = hrp.Position + dir * _8080x566
+            local rotOnly = L389_46 - L389_46.Position
+            hrp.CFrame = CFrame.new(goal) * rotOnly
         end
     end)
 end)
 
+-- ============================================================
 -- 타겟 탐색 스레드
+-- ============================================================
 task.spawn(function()
     while true do
         task.wait(0.01)
         if L555_61 and _2631x704 then
-            local __xxEEAQiVz = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position or Vector3.zero
-            local _338_977 = nil
-            local __UHvhQn = math.huge
+            local myPos = LocalPlayer.Character
+                and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                and LocalPlayer.Character.HumanoidRootPart.Position
+                or Vector3.zero
+
+            local best, bestDist = nil, math.huge
 
             for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and player.Character and not is_teammate(player) then
                     if get_character(player) or get_player_from_part(player) then continue end
-                    local __BfgstqWnead = player.Character:FindFirstChild("HumanoidRootPart")
-                    local a87b18c82 = player.Character:FindFirstChild("Humanoid")
-                    if __BfgstqWnead and a87b18c82 and a87b18c82.Health > 0 then
-                        local _100l10O0II = (Vector3.new(__xxEEAQiVz.X, 0, __xxEEAQiVz.Z) - Vector3.new(__BfgstqWnead.Position.X, 0, __BfgstqWnead.Position.Z)).Magnitude
-                        if _100l10O0II < __UHvhQn then
-                            __UHvhQn = _100l10O0II
-                            _338_977 = player
+                    local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                    local hum = player.Character:FindFirstChild("Humanoid")
+                    if hrp and hum and hum.Health > 0 then
+                        local d = (Vector3.new(myPos.X, 0, myPos.Z) - Vector3.new(hrp.Position.X, 0, hrp.Position.Z)).Magnitude
+                        if d < bestDist then
+                            bestDist = d
+                            best = player
                         end
                     end
                 end
             end
 
-            if _338_977 and _338_977.Character then
-                a73b35c96 = get_character_root(_338_977.Character)
+            if best and best.Character then
+                a73b35c96 = get_character_root(best.Character)
             else
                 a73b35c96 = nil
             end
@@ -299,8 +361,150 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- Combat 탭 UI 구성 (LinoriaLib)
+-- Combat 탭 UI 구성 (최상단 반영)
 -- ==========================================
+
+-- 1. Aimbot 그룹박스 (Combat 탭 좌측 최상단)
+local AimbotGroup = Tabs.Combat:AddLeftGroupbox('Aimbot')
+
+AimbotGroup:AddToggle('AimbotEnable', {
+    Text = 'Enable Aimbot',
+    Default = false,
+    Callback = function(Value)
+        getgenv().elisium = getgenv().elisium or {}
+        getgenv().elisium.aimbot = getgenv().elisium.aimbot or {}
+        getgenv().elisium.aimbot.enable = Value
+    end
+})
+
+AimbotGroup:AddToggle('AimbotShowFOV', {
+    Text = 'Show FOV',
+    Default = false,
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.aimbot then
+            getgenv().elisium.aimbot.show_fov = Value
+        end
+    end
+}):AddColorPicker('AimbotFOVColor', {
+    Default = Color3.fromRGB(120, 81, 166),
+    Title = 'FOV Color',
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.aimbot then
+            getgenv().elisium.aimbot.fov_color = Value
+        end
+    end
+})
+
+AimbotGroup:AddSlider('AimbotFOVRadius', {
+    Text = 'FOV Radius',
+    Default = 180,
+    Min = 10,
+    Max = 800,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.aimbot then
+            getgenv().elisium.aimbot.fov_radius = Value
+        end
+    end
+})
+
+AimbotGroup:AddSlider('AimbotSmoothing', {
+    Text = 'Smoothing',
+    Default = 1,
+    Min = 1,
+    Max = 20,
+    Rounding = 1,
+    Compact = false,
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.aimbot then
+            getgenv().elisium.aimbot.smoothing = Value
+        end
+    end
+})
+
+AimbotGroup:AddToggle('AimbotClosestPart', {
+    Text = 'Target Closest Part',
+    Default = false,
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.aimbot then
+            getgenv().elisium.aimbot.closest_part = Value
+        end
+    end
+})
+
+
+-- 2. Silent Aim 그룹박스 (Combat 탭 우측 최상단)
+local SilentAimGroup = Tabs.Combat:AddRightGroupbox('Silent Aim')
+
+SilentAimGroup:AddToggle('SilentAimEnable', {
+    Text = 'Enable Silent Aim',
+    Default = false,
+    Callback = function(Value)
+        getgenv().elisium = getgenv().elisium or {}
+        getgenv().elisium.silent_aim = getgenv().elisium.silent_aim or {}
+        getgenv().elisium.silent_aim.enable = Value
+    end
+})
+
+SilentAimGroup:AddToggle('SilentAimShowFOV', {
+    Text = 'Show FOV',
+    Default = false,
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.silent_aim then
+            getgenv().elisium.silent_aim.show_fov = Value
+        end
+    end
+}):AddColorPicker('SilentAimFOVColor', {
+    Default = Color3.fromRGB(120, 81, 166),
+    Title = 'FOV Color',
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.silent_aim then
+            getgenv().elisium.silent_aim.fov_color = Value
+        end
+    end
+})
+
+SilentAimGroup:AddSlider('SilentAimFOVRadius', {
+    Text = 'FOV Radius',
+    Default = 180,
+    Min = 10,
+    Max = 800,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.silent_aim then
+            getgenv().elisium.silent_aim.fov_radius = Value
+        end
+    end
+})
+
+SilentAimGroup:AddSlider('SilentAimHitChance', {
+    Text = 'Hit Chance',
+    Default = 100,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.silent_aim then
+            getgenv().elisium.silent_aim.hit_chance = Value
+        end
+    end
+})
+
+SilentAimGroup:AddToggle('SilentAimClosestPart', {
+    Text = 'Target Closest Part',
+    Default = false,
+    Callback = function(Value)
+        if getgenv().elisium and getgenv().elisium.silent_aim then
+            getgenv().elisium.silent_aim.closest_part = Value
+        end
+    end
+})
+
+
+-- 3. Ragebot 그룹박스 (Combat 탭 기존 항목 + Mode 드롭다운 추가)
 local RagebotGroup = Tabs.Combat:AddLeftGroupbox('Ragebot')
 
 RagebotGroup:AddToggle('RagebotEnabled', {
@@ -309,6 +513,15 @@ RagebotGroup:AddToggle('RagebotEnabled', {
     Callback = function(Value)
         L555_61 = Value
         pcall(function() v71190(Value) end)
+    end
+})
+
+RagebotGroup:AddDropdown('RagebotModeDropdown', {
+    Values = { 'Gun', 'Knife' },
+    Default = 1,
+    Text = 'Ragebot Mode',
+    Callback = function(Value)
+        RagebotMode = Value
     end
 })
 
@@ -357,643 +570,3 @@ RagebotGroup:AddSlider('RagebotAttack', {
         a85b57c99 = Value
     end
 })
-
--- ==========================================
--- 2. Visuals 탭 (ESP & Skybox)
--- ==========================================
-local ESPGroup = Tabs.Visuals:AddLeftGroupbox('ESP')
-
-ESPGroup:AddToggle('ESPBox', { Text = 'Box ESP', Default = false })
-ESPGroup:AddToggle('ESPName', { Text = 'Name ESP', Default = false })
-ESPGroup:AddToggle('ESPHealth', { Text = 'Health ESP', Default = false })
-ESPGroup:AddToggle('ESPDistance', { Text = 'Distance ESP', Default = false })
-ESPGroup:AddToggle('ESPTracer', { Text = 'Tracer ESP', Default = false })
-ESPGroup:AddToggle('ESPSkeleton', { Text = 'Skeleton ESP', Default = false })
-ESPGroup:AddToggle('ESPChams', { Text = 'Chams ESP', Default = false })
-
-local SkyboxGroup = Tabs.Visuals:AddRightGroupbox('Skybox')
-
-local function GetSky()
-    local sky = Lighting:FindFirstChildOfClass("Sky")
-    if not sky then
-        sky = Instance.new("Sky")
-        sky.Parent = Lighting
-    end
-    return sky
-end
-
-local Presets = {
-    ["Purple Nebula"] = "rbxassetid://159454299",
-    ["Night Sky"] = "rbxassetid://12064107",
-    ["Pink Sunset"] = "rbxassetid://271042310",
-    ["Vaporwave"] = "rbxassetid://1417494402"
-}
-
-local function ApplySky(id)
-    local sky = GetSky()
-    sky.SkyboxBk, sky.SkyboxDn, sky.SkyboxFt, sky.SkyboxLf, sky.SkyboxRt, sky.SkyboxUp = id, id, id, id, id, id
-end
-
-local function RemoveSky()
-    local sky = Lighting:FindFirstChildOfClass("Sky")
-    if sky then sky:Destroy() end
-end
-
-SkyboxGroup:AddDropdown('SkyboxPresetDropdown', {
-    Values = { 'Disable', 'Purple Nebula', 'Night Sky', 'Pink Sunset', 'Vaporwave' },
-    Default = 1,
-    Text = 'Presets',
-    Callback = function(Value)
-        if Value == 'Disable' then RemoveSky() elseif Presets[Value] then ApplySky(Presets[Value]) end
-    end
-})
-
--- ==========================================
--- 3. Character 탭 (Emote)
--- ==========================================
-local EmoteGroup = Tabs.character:AddLeftGroupbox('Emote')
-
-local EmoteEnabled = false
-local emoteTrack = nil
-local EMOTESPEED = 1
-
-local EMOTES = {
-    "rbxassetid://507771019",
-    "rbxassetid://507776043",
-    "rbxassetid://507777623",
-    "rbxassetid://3698339488",
-    "rbxassetid://92281817840531",
-}
-
-local function stopEmote()
-    EmoteEnabled = false
-    if emoteTrack then
-        pcall(function() emoteTrack:Stop() end)
-        emoteTrack = nil
-    end
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        pcall(function()
-            for _, t in ipairs(hum:GetPlayingAnimationTracks()) do
-                t:Stop()
-            end
-        end)
-    end
-end
-
-local function playEmote(char)
-    if not EmoteEnabled then return end
-    char = char or LocalPlayer.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 3)
-    if not hum then return end
-    local animator = hum:FindFirstChildOfClass("Animator")
-    if not animator then
-        animator = Instance.new("Animator")
-        animator.Parent = hum
-    end
-
-    for _, id in ipairs(EMOTES) do
-        local ok, track = pcall(function()
-            local a = Instance.new("Animation")
-            a.AnimationId = id
-            local t = animator:LoadAnimation(a)
-            t.Priority = Enum.AnimationPriority.Action4
-            t.Looped = true
-            t:Play(0.1, 1, EMOTESPEED)
-            return t
-        end)
-        if ok and track then
-            emoteTrack = track
-            track.Stopped:Connect(function()
-                if EmoteEnabled then
-                    task.defer(function() playEmote(char) end)
-                end
-            end)
-            return
-        end
-    end
-end
-
-LocalPlayer.CharacterAdded:Connect(function(char)
-    if EmoteEnabled then
-        task.delay(0.5, function()
-            if EmoteEnabled then playEmote(char) end
-        end)
-    end
-end)
-
-EmoteGroup:AddToggle('EnableEmoteSpeed', {
-    Text = 'Enable Fast Emote',
-    Default = false,
-    Tooltip = 'emote',
-    Callback = function(Value)
-        if Value then
-            EmoteEnabled = true
-            playEmote(LocalPlayer.Character)
-        else
-            stopEmote()
-        end
-    end
-})
-
-EmoteGroup:AddSlider('EmoteSpeedSlider', {
-    Text = 'Emote',
-    Default = 1,
-    Min = 1,
-    Max = 1000,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(Value)
-        EMOTESPEED = Value
-        if emoteTrack and EmoteEnabled then
-            pcall(function() emoteTrack:AdjustSpeed(EMOTESPEED) end)
-        end
-    end
-})
-
--- ==========================================
--- 4. Misc 탭 (Device Spoof & Skin Changer)
--- ==========================================
-local Group = Tabs.Misc:AddLeftGroupbox('Device Spoofing')
-local SetControlsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Replication"):WaitForChild("Fighter"):WaitForChild("SetControls")
-
-Group:AddDropdown('DeviceDropdown', {
-    Values = { 'PC (Mouse & Keyboard)', 'Mobile (Touch)', 'Controller (Gamepad)', 'VR' },
-    Default = 1,
-    Text = 'Device Spoof',
-    Callback = function(Value)
-        local TargetDevice = "MouseKeyboard"
-        if Value:find("PC") then TargetDevice = "MouseKeyboard"
-        elseif Value:find("Mobile") then TargetDevice = "Touch"
-        elseif Value:find("Controller") then TargetDevice = "Gamepad"
-        elseif Value:find("VR") then TargetDevice = "VR" end
-
-        SetControlsRemote:FireServer("MouseKeyboard")
-        task.wait(0.1)
-        SetControlsRemote:FireServer(TargetDevice)
-    end
-})
-
-Group:AddButton({
-    Text = 'Apply Selected Device',
-    Func = function()
-        if Options and Options.DeviceDropdown then
-            Options.DeviceDropdown:OnChanged(Options.DeviceDropdown.Value)
-        end
-    end
-})
-
-local SkinBox = Tabs.Misc:AddRightGroupbox('Skin Changer')
-SkinBox:AddButton('Unlock All', function()
-    task.spawn(function()
-        pcall(function()
-            if getgenv().SkinChangerLoaded then 
-                Library:Notify("The skin changer is already running!", 2)
-                return 
-            end
-
-            Library:Notify("Loading Skin Changer...", 2)
-
-            local scriptString = [=[
-local plrs = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
-local player = plrs.LocalPlayer
-local playerScripts = player:WaitForChild("PlayerScripts")
-local controllers = playerScripts:WaitForChild("Controllers")
-
-local EnumLibrary, CosmeticLibrary, ItemLibrary, DataController
-pcall(function() EnumLibrary = require(ReplicatedStorage.Modules:WaitForChild("EnumLibrary", 10)) end)
-if EnumLibrary and EnumLibrary.WaitForEnumBuilder then pcall(function() EnumLibrary:WaitForEnumBuilder() end) end
-pcall(function() CosmeticLibrary = require(ReplicatedStorage.Modules:WaitForChild("CosmeticLibrary", 10)) end)
-pcall(function() ItemLibrary = require(ReplicatedStorage.Modules:WaitForChild("ItemLibrary", 10)) end)
-pcall(function() DataController = require(controllers:WaitForChild("PlayerDataController", 10)) end)
-
-if not (CosmeticLibrary and ItemLibrary and DataController) then return end
-
-getgenv().SkinChangerLoaded = true
-
-local equipped, favorites = {}, {}
-local constructingWeapon, viewingProfile = nil, nil
-local lastUsedWeapon = nil
-
-local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
-local dataRemotes = remotes and remotes:WaitForChild("Data", 5)
-local equipRemote = dataRemotes and dataRemotes:WaitForChild("EquipCosmetic", 5)
-local favoriteRemote = dataRemotes and dataRemotes:WaitForChild("FavoriteCosmetic", 5)
-local replicationRemotes = remotes and remotes:WaitForChild("Replication", 5)
-local fighterRemotes = replicationRemotes and replicationRemotes:WaitForChild("Fighter", 5)
-local useItemRemote = fighterRemotes and fighterRemotes:WaitForChild("UseItem", 5)
-
-local function cloneCosmetic(name, cosmeticType, options)
-    local base = CosmeticLibrary.Cosmetics[name]
-    if not base then return nil end
-    local data = {}
-    for key, value in pairs(base) do data[key] = value end
-    data.Name = name
-    data.Type = data.Type or cosmeticType
-    data.Seed = data.Seed or math.random(1, 1000000)
-    if EnumLibrary then
-        local success, enumId = pcall(EnumLibrary.ToEnum, EnumLibrary, name)
-        if success and enumId then data.Enum, data.ObjectID = enumId, data.ObjectID or enumId end
-    end
-    if options then
-        if options.inverted ~= nil then data.Inverted = options.inverted end
-        if options.favoritesOnly ~= nil then data.OnlyUseFavorites = options.favoritesOnly end
-    end
-    return data
-end
-
-CosmeticLibrary.OwnsCosmeticNormally = function() return true end
-CosmeticLibrary.OwnsCosmeticUniversally = function() return true end
-CosmeticLibrary.OwnsCosmeticForWeapon = function() return true end
-local originalOwnsCosmetic = CosmeticLibrary.OwnsCosmetic
-CosmeticLibrary.OwnsCosmetic = function(self, inventory, name, weapon)
-    if name and typeof(name) == "string" and name:find("MISSING_") then return originalOwnsCosmetic(self, inventory, name, weapon) end
-    return true
-end
-
-local originalGet = DataController.Get
-DataController.Get = function(self, key)
-    local data = originalGet(self, key)
-    if key == "CosmeticInventory" then
-        local proxy = {}
-        if data then for k, v in pairs(data) do proxy[k] = v end end
-        return setmetatable(proxy, {__index = function() return true end})
-    end
-    if key == "FavoritedCosmetics" then
-        local result = data and table.clone(data) or {}
-        for weapon, favs in pairs(favorites) do
-            result[weapon] = result[weapon] or {}
-            for name, isFav in pairs(favs) do result[weapon][name] = isFav end
-        end
-        return result
-    end
-    return data
-end
-
-local originalGetWeaponData = DataController.GetWeaponData
-DataController.GetWeaponData = function(self, weaponName)
-    local data = originalGetWeaponData(self, weaponName)
-    if not data then return nil end
-    local merged = {}
-    for key, value in pairs(data) do merged[key] = value end
-    merged.Name = weaponName
-    if equipped[weaponName] then
-        for cosmeticType, cosmeticData in pairs(equipped[weaponName]) do merged[cosmeticType] = cosmeticData end
-    end
-    return merged
-end
-
-local FighterController
-pcall(function() FighterController = require(controllers:WaitForChild("FighterController", 10)) end)
-
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    if method ~= "FireServer" or checkcaller() then return oldNamecall(self, ...) end
-    local args = {...}
-    
-    if useItemRemote and self == useItemRemote then
-        local objectID = args[1]
-        if FighterController then
-            pcall(function()
-                local fighter = FighterController:GetFighter(player)
-                if fighter and typeof(fighter) == "table" and fighter.Items then
-                    for _, item in pairs(fighter.Items) do
-                        if type(item) == "table" and item.Get then
-                            if item:Get("ObjectID") == objectID then
-                                lastUsedWeapon = item.Name
-                                break
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end            
-    
-    if equipRemote and self == equipRemote then
-        local weaponName, cosmeticType, cosmeticName, options = args[1], args[2], args[3], args[4] or {}                
-        if cosmeticName and cosmeticName ~= "None" and cosmeticName ~= "" then
-            local inventory = DataController:Get("CosmeticInventory")
-            if inventory and rawget(inventory, cosmeticName) then return oldNamecall(self, ...) end
-        end                
-        equipped[weaponName] = equipped[weaponName] or {}                
-        if not cosmeticName or cosmeticName == "None" or cosmeticName == "" then
-            equipped[weaponName][cosmeticType] = nil
-            if not next(equipped[weaponName]) then equipped[weaponName] = nil end
-        else
-            local cloned = cloneCosmetic(cosmeticName, cosmeticType, {inverted = options.IsInverted, favoritesOnly = options.OnlyUseFavorites})
-            if cloned then equipped[weaponName][cosmeticType] = cloned end
-        end                
-        task.defer(function()
-            pcall(function() DataController.CurrentData:Replicate("WeaponInventory") end)
-        end)
-        return
-    end            
-    
-    if favoriteRemote and self == favoriteRemote then
-        favorites[args[1]] = favorites[args[1]] or {}
-        favorites[args[1]][args[2]] = args[3] or nil
-        task.spawn(function() pcall(function() DataController.CurrentData:Replicate("FavoritedCosmetics") end) end)
-        return
-    end            
-    return oldNamecall(self, ...)
-end)
-
-local ClientItem
-pcall(function() ClientItem = require(player.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem) end)
-if ClientItem and type(ClientItem) == "table" and ClientItem._CreateViewModel then
-    local originalCreateViewModel = ClientItem._CreateViewModel
-    ClientItem._CreateViewModel = function(self, viewmodelRef)
-        local weaponName = self.Name
-        local weaponPlayer = self.ClientFighter and self.ClientFighter.Player
-        constructingWeapon = (weaponPlayer == player) and weaponName or nil    
-        pcall(function()
-            if weaponPlayer == player and equipped[weaponName] and equipped[weaponName].Skin and viewmodelRef then
-                local dataKey, skinKey, nameKey = self:ToEnum("Data"), self:ToEnum("Skin"), self:ToEnum("Name")
-                if viewmodelRef[dataKey] then
-                    viewmodelRef[dataKey][skinKey] = equipped[weaponName].Skin
-                    viewmodelRef[dataKey][nameKey] = equipped[weaponName].Skin.Name
-                elseif viewmodelRef.Data then
-                    viewmodelRef.Data.Skin = equipped[weaponName].Skin
-                    viewmodelRef.Data.Name = equipped[weaponName].Skin.Name
-                end
-            end
-        end)
-        local result
-        pcall(function() result = originalCreateViewModel(self, viewmodelRef) end)
-        constructingWeapon = nil
-        return result or viewmodelRef
-    end
-end
-
-local viewModelModule = player.PlayerScripts.Modules.ClientReplicatedClasses.ClientFighter.ClientItem:FindFirstChild("ClientViewModel")
-if viewModelModule then
-    local ClientViewModel = require(viewModelModule)
-    if ClientViewModel.GetWrap then
-        local originalGetWrap = ClientViewModel.GetWrap
-        ClientViewModel.GetWrap = function(self)
-            local weaponName = self.ClientItem and self.Name
-            local weaponPlayer = self.ClientItem and self.ClientItem.ClientFighter and self.ClientItem.ClientFighter.Player
-            if weaponName and weaponPlayer == player and equipped[weaponName] and equipped[weaponName].Wrap then
-                return equipped[weaponName].Wrap
-            end
-            return originalGetWrap(self)
-        end
-    end
-    local originalNew = ClientViewModel.new
-    ClientViewModel.new = function(replicatedData, clientItem)
-        local weaponPlayer = clientItem.ClientFighter and clientItem.ClientFighter.Player
-        local weaponName = constructingWeapon or clientItem.Name
-        if weaponPlayer == player and equipped[weaponName] then
-            local ReplicatedClass = require(ReplicatedStorage.Modules.ReplicatedClass)
-            local dataKey = ReplicatedClass:ToEnum("Data")
-            replicatedData[dataKey] = replicatedData[dataKey] or {}
-            local cosmetics = equipped[weaponName]
-            if cosmetics.Skin then replicatedData[dataKey][ReplicatedClass:ToEnum("Skin")] = cosmetics.Skin end
-            if cosmetics.Wrap then replicatedData[dataKey][ReplicatedClass:ToEnum("Wrap")] = cosmetics.Wrap end
-            if cosmetics.Charm then replicatedData[dataKey][ReplicatedClass:ToEnum("Charm")] = cosmetics.Charm end
-        end
-        local result = originalNew(replicatedData, clientItem)
-        if weaponPlayer == player and equipped[weaponName] and equipped[weaponName].Wrap and result._UpdateWrap then
-            result:_UpdateWrap()
-            task.delay(0.1, function() if not result._destroyed then result:_UpdateWrap() end end)
-        end
-        return result
-    end
-end
-
-local originalGetViewModelImage = ItemLibrary.GetViewModelImageFromWeaponData
-ItemLibrary.GetViewModelImageFromWeaponData = function(self, weaponData, highRes)
-    if not weaponData then return originalGetViewModelImage(self, weaponData, highRes) end
-    local weaponName = weaponData.Name
-    local shouldShowSkin = (weaponData.Skin and equipped[weaponName] and weaponData.Skin == equipped[weaponName].Skin) or (viewingProfile == player and equipped[weaponName] and equipped[weaponName].Skin)
-    if shouldShowSkin and equipped[weaponName] and equipped[weaponName].Skin then
-        local skinInfo = self.ViewModels[equipped[weaponName].Skin.Name]
-        if skinInfo then return skinInfo[highRes and "ImageHighResolution" or "Image"] or skinInfo.Image end
-    end
-    return originalGetViewModelImage(self, weaponData, highRes)
-end
-
-pcall(function()
-    local ViewProfile = require(player.PlayerScripts.Modules.Pages.ViewProfile)
-    if ViewProfile and ViewProfile.Fetch then
-        local originalFetch = ViewProfile.Fetch
-        ViewProfile.Fetch = function(self, targetPlayer)
-            viewingProfile = targetPlayer
-            return originalFetch(self, targetPlayer)
-        end
-    end
-end)
-
-local ClientEntity
-pcall(function() ClientEntity = require(player.PlayerScripts.Modules.ClientReplicatedClasses.ClientEntity) end)
-if ClientEntity and ClientEntity.ReplicateFromServer then
-    local originalReplicateFromServer = ClientEntity.ReplicateFromServer
-    ClientEntity.ReplicateFromServer = function(self, action, ...)
-        if action == "FinisherEffect" then
-            local args = {...}
-            local killerName = args[3]            
-            local decodedKiller = killerName
-            if type(killerName) == "userdata" and EnumLibrary and EnumLibrary.FromEnum then
-                local ok, decoded = pcall(EnumLibrary.FromEnum, EnumLibrary, killerName)
-                if ok and decoded then decodedKiller = decoded end
-            end            
-            local isOurKill = tostring(decodedKiller) == player.Name or tostring(decodedKiller):lower() == player.Name:lower()            
-            if isOurKill and lastUsedWeapon and equipped[lastUsedWeapon] and equipped[lastUsedWeapon].Finisher then
-                local finisherData = equipped[lastUsedWeapon].Finisher
-                local finisherEnum = finisherData.Enum                
-                if not finisherEnum and EnumLibrary then
-                    local ok, result = pcall(EnumLibrary.ToEnum, EnumLibrary, finisherData.Name)
-                    if ok and result then finisherEnum = result end
-                end                
-                if finisherEnum then
-                    args[1] = finisherEnum
-                    return originalReplicateFromServer(self, action, unpack(args))
-                end
-            end
-        end        
-        return originalReplicateFromServer(self, action, ...)
-    end
-end
-]=]
-            loadstring(scriptString)()
-            Library:Notify("Skin unlock complete!", 3)
-        end)
-    end)
-end)
-
--- ==========================================
--- 5. ESP Render Loop
--- ==========================================
-local espData = {}
-
-local function addESP(p)
-    if p == LocalPlayer then return end
-    task.spawn(function()
-        local box, hpBg, hpBar, hpText, nameText, distText, tracer
-        pcall(function()
-            if Drawing then
-                box = Drawing.new("Square"); box.Visible = false; box.Color = Color3.new(1, 1, 1); box.Thickness = 1; box.Filled = false
-                hpBg = Drawing.new("Square"); hpBg.Visible = false; hpBg.Color = Color3.new(0, 0, 0); hpBg.Thickness = 1; hpBg.Filled = true
-                hpBar = Drawing.new("Square"); hpBar.Visible = false; hpBar.Color = Color3.new(0, 1, 0); hpBar.Thickness = 1; hpBar.Filled = true
-                hpText = Drawing.new("Text"); hpText.Visible = false; hpText.Center = true; hpText.Outline = true; hpText.Color = Color3.new(1, 1, 1); hpText.Size = 13
-                nameText = Drawing.new("Text"); nameText.Visible = false; nameText.Center = true; nameText.Outline = true; nameText.Color = Color3.new(1, 1, 1); nameText.Size = 13
-                distText = Drawing.new("Text"); distText.Visible = false; distText.Center = true; distText.Outline = true; distText.Color = Color3.new(1, 1, 1); distText.Size = 13
-                tracer = Drawing.new("Line"); tracer.Visible = false; tracer.Color = Color3.new(1, 1, 1); tracer.Thickness = 1
-            end
-        end)
-        
-        if box then
-            espData[p] = { Box = box, HpBg = hpBg, HealthBar = hpBar, HealthText = hpText, NameText = nameText, DistText = distText, Tracer = tracer, Skeleton = {} }
-            local bones = {{"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}, {"Head", "Torso"}, {"Torso", "Left Arm"}, {"Torso", "Right Arm"}, {"Torso", "Left Leg"}, {"Torso", "Right Leg"}}
-            for _, b in pairs(bones) do 
-                pcall(function() 
-                    if Drawing then table.insert(espData[p].Skeleton, {b[1], b[2], Drawing.new("Line")}) end
-                end) 
-            end
-        end
-    end)
-end
-
-for _, p in ipairs(Players:GetPlayers()) do addESP(p) end
-Players.PlayerAdded:Connect(addESP)
-Players.PlayerRemoving:Connect(function(p)
-    if espData[p] then
-        pcall(function()
-            espData[p].Box:Remove(); espData[p].HpBg:Remove(); espData[p].HealthBar:Remove(); espData[p].HealthText:Remove()
-            espData[p].NameText:Remove(); espData[p].DistText:Remove(); espData[p].Tracer:Remove()
-            for _, s in pairs(espData[p].Skeleton) do s[3]:Remove() end
-        end)
-        espData[p] = nil
-    end
-end)
-
-local function IsToggleActive(toggleName)
-    return Toggles and Toggles[toggleName] and Toggles[toggleName].Value == true
-end
-
-RunService.RenderStepped:Connect(function()
-    local Camera = Workspace.CurrentCamera
-    if not Camera then return end
-
-    for p, d in pairs(espData) do
-        local isAlive = false
-        local c = p.Character
-        local root, head, rootPos, boxSize, boxPos, top, bottom, height, width
-        
-        if c and c:FindFirstChild("Humanoid") and c.Humanoid.Health > 0 then
-            root = c:FindFirstChild("HumanoidRootPart")
-            head = c:FindFirstChild("Head") or c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso")
-            
-            if root and head then
-                local rPos, onScreen = Camera:WorldToViewportPoint(root.Position)
-                if onScreen then
-                    isAlive = true
-                    rootPos = rPos
-                    local headPos = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.5, 0))
-                    local legPos = Camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3, 0))
-                    height = math.abs(headPos.Y - legPos.Y)
-                    width = height * 0.6 
-                    boxSize = Vector2.new(width, height)
-                    boxPos = Vector2.new(rootPos.X - width / 2, headPos.Y)
-                    top = {Y = headPos.Y}
-                    bottom = {Y = legPos.Y}
-                end
-            end
-        end
-        
-        if isAlive then
-            if IsToggleActive("ESPBox") then d.Box.Size = boxSize; d.Box.Position = boxPos; d.Box.Visible = true else d.Box.Visible = false end
-            
-            if IsToggleActive("ESPHealth") then
-                local maxH = math.max(c.Humanoid.MaxHealth, 1)
-                local h = math.clamp(c.Humanoid.Health / maxH, 0, 1)
-                d.HpBg.Size = Vector2.new(4, height); d.HpBg.Position = Vector2.new(boxPos.X - 6, boxPos.Y); d.HpBg.Visible = true
-                local barHeight = height * h
-                d.HealthBar.Size = Vector2.new(2, barHeight); d.HealthBar.Position = Vector2.new(boxPos.X - 5, boxPos.Y + (height - barHeight))
-                d.HealthBar.Color = Color3.fromHSV(h * 0.33, 1, 1); d.HealthBar.Visible = true
-                d.HealthText.Text = tostring(math.floor(c.Humanoid.Health)); d.HealthText.Position = Vector2.new(boxPos.X - 25, boxPos.Y + (height - barHeight) - 6); d.HealthText.Visible = true
-            else 
-                d.HpBg.Visible = false; d.HealthBar.Visible = false; d.HealthText.Visible = false 
-            end
-            
-            if IsToggleActive("ESPName") then d.NameText.Text = p.Name; d.NameText.Position = Vector2.new(boxPos.X + width/2, top.Y - 15); d.NameText.Visible = true else d.NameText.Visible = false end
-            if IsToggleActive("ESPDistance") then local dist = math.floor((Camera.CFrame.Position - root.Position).Magnitude); d.DistText.Text = tostring(dist) .. "m"; d.DistText.Position = Vector2.new(boxPos.X + width/2, bottom.Y + 2); d.DistText.Visible = true else d.DistText.Visible = false end
-            if IsToggleActive("ESPTracer") then d.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y); d.Tracer.To = Vector2.new(rootPos.X, bottom.Y); d.Tracer.Visible = true else d.Tracer.Visible = false end
-            
-            if IsToggleActive("ESPSkeleton") then
-                for _, s in pairs(d.Skeleton) do
-                    local p1, p2 = c:FindFirstChild(s[1]), c:FindFirstChild(s[2])
-                    if p1 and p2 then
-                        local v1, o1 = Camera:WorldToViewportPoint(p1.Position)
-                        local v2, o2 = Camera:WorldToViewportPoint(p2.Position)
-                        if o1 and o2 then s[3].From = Vector2.new(v1.X, v1.Y); s[3].To = Vector2.new(v2.X, v2.Y); s[3].Visible = true; s[3].Color = Color3.new(1, 1, 1) else s[3].Visible = false end
-                    else s[3].Visible = false end
-                end
-            else 
-                for _, s in pairs(d.Skeleton) do s[3].Visible = false end 
-            end
-            
-            local highlight = c:FindFirstChild("AntiHubChams")
-            if IsToggleActive("ESPChams") then
-                if not highlight then
-                    highlight = Instance.new("Highlight")
-                    highlight.Name = "AntiHubChams"
-                    highlight.FillColor = Color3.new(1, 0, 0)
-                    highlight.OutlineColor = Color3.new(1, 1, 1)
-                    highlight.FillTransparency = 0.5
-                    highlight.Parent = c
-                end
-            else
-                if highlight then highlight:Destroy() end
-            end
-        else
-            d.Box.Visible = false; d.HpBg.Visible = false; d.HealthBar.Visible = false; d.HealthText.Visible = false
-            d.NameText.Visible = false; d.DistText.Visible = false; d.Tracer.Visible = false
-            for _, s in pairs(d.Skeleton) do s[3].Visible = false end
-            
-            if c then
-                local highlight = c:FindFirstChild("AntiHubChams")
-                if highlight then highlight:Destroy() end
-            end
-        end
-    end
-end)
-
--- ==========================================
--- 6. Setting 탭 (Config Manager & Theme Manager)
--- ==========================================
-local SettingsMenu = Tabs.Setting:AddLeftGroupbox('Menu Settings')
-
-SettingsMenu:AddButton('Unload UI', function()
-    Library:Unload()
-end)
-
-SettingsMenu:AddLabel('Menu Keybind'):AddKeyPicker('MenuKeybind', {
-    Default = 'End',
-    NoUI = true,
-    Text = 'Menu Keybind'
-})
-
-Library.ToggleKeybind = Options.MenuKeybind
-
--- LinoriaLib 내장 설정 관리자 및 테마 설정 적용
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
-
-SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
-
-ThemeManager:SetFolder('YumuEnchantment')
-SaveManager:SetFolder('YumuEnchantment/configs')
-
-SaveManager:BuildConfigSection(Tabs.Setting)
-ThemeManager:ApplyToTab(Tabs.Setting)
-
--- 콘픽 자동 불러오기 처리
-SaveManager:LoadAutoloadConfig()
