@@ -100,7 +100,7 @@ local a73b35c96  = nil
 local RagebotMode = "gun"
 
 -- 🔹 knife 모드 TP 뒤쪽 거리 (스터드)
-local KnifeBackStuds = 2
+local KnifeBackStuds = 0
 
 local L389_46    = nil
 local L273_20    = nil
