@@ -374,7 +374,7 @@ RunService.Heartbeat:Connect(function()
                 local backOffset
                 if targetHRP then
                     -- 상대의 LookVector 뒤쪽 (등 방향)
-                    backOffset = targetHRP.CFrame.LookVector * 0.6
+                    backOffset = targetHRP.CFrame.LookVector * 2
                 else
                     backOffset = Vector3.new(0, 0, 0)
                 end
