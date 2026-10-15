@@ -15,7 +15,7 @@ local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
-local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local lp = LocalPlayer
 local Camera = Workspace.CurrentCamera or Workspace:WaitForChild("Camera")
@@ -96,11 +96,13 @@ local a85b57c99  = 0.1
 local L555_61    = false
 local __lhiRNgvZ = 3
 local a73b35c96  = nil
-local RagebotMode = "Gun" -- 기본 모드 설정
 
 local L389_46    = nil
 local L273_20    = nil
 local _10O0lO    = nil
+
+-- 모드 선택 변수 ('Gun' 또는 'Knife')
+local ragebotMode = "Gun"
 
 -- ============================================================
 -- Desync 타이밍 루프
@@ -138,7 +140,7 @@ local function get_character_root(char)
 end
 
 -- ============================================================
--- Remote Attack Engine (Gun 모드용) & Knife 우클릭 공격 루프
+-- Remote Attack Engine (Gun & Knife 통합)
 -- ============================================================
 local v71190 = function(on) end
 
@@ -201,27 +203,25 @@ task.spawn(function()
                 local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if not hrp then return end
 
-                if RagebotMode == "Gun" then
-                    local id = getObjectID()
-                    if id then cachedID = id else id = cachedID end
-                    if not id then return end
+                local id = getObjectID()
+                if id then cachedID = id else id = cachedID end
+                if not id then return end
 
-                    local target = a73b35c96
-                    local origin = target.Position + Vector3.new(0, 0.1, 0)
-                    local payload = buildPayload(origin, target)
-                    pcall(function()
-                        if id and StartShooting then
-                            UseItemRoot:FireServer(id, StartShooting, payload, nil) -- 수정된 부분
-                        end
-                    end)
-                elseif RagebotMode == "Knife" then
-                    -- Knife 모드일 때 마우스 우클릭 시뮬레이션 (공격)
-                    pcall(function()
-                        VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 0)
-                        task.wait(0.05)
-                        VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
-                    end)
+                -- Knife 모드일 때: MB2(우클릭)를 누르고 있을 때만 공격 패킷 전송
+                if ragebotMode == "Knife" then
+                    if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                        return
+                    end
                 end
+
+                local target = a73b35c96
+                local origin = target.Position + Vector3.new(0, 0.1, 0)
+                local payload = buildPayload(origin, target)
+                pcall(function()
+                    if id and StartShooting then
+                        UseItemRemote:FireServer(id, StartShooting, payload, nil)
+                    end
+                end)
             end)
         end
     end)
@@ -272,14 +272,21 @@ RunService.Heartbeat:Connect(function()
             local plr   = Players:GetPlayerFromCharacter(model)
             if plr and get_player_from_part(plr) then return end
 
+            -- Knife 모드이면서 우클릭(MB2)이 눌리지 않았을 때는 텔레포트 작동 방지 (선택 사항)
+            if ragebotMode == "Knife" and not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                return
+            end
+
             L389_46 = hrp.CFrame
             L273_20 = hrp.AssemblyLinearVelocity
 
             local tPos = a73b35c96.Position
-            local goal = tPos
 
-            if RagebotMode == "Gun" then
-                -- 기존 Gun 모드: 칼 소지 여부에 따라 위/아래 텔포
+            if ragebotMode == "Knife" then
+                -- [Knife 모드] 상대방과 완전히 겹치도록 TP (오프셋 0)
+                hrp.CFrame = CFrame.new(tPos, tPos + a73b35c96.CFrame.LookVector)
+            else
+                -- [Gun 모드] 기존 로직 유지 (칼 소지 여부에 따른 위/아래 TP)
                 local isKnife = false
                 pcall(function()
                     if model then
@@ -298,14 +305,11 @@ RunService.Heartbeat:Connect(function()
                         end
                     end
                 end)
+
                 local heightOffset = isKnife and -__lhiRNgvZ or __lhiRNgvZ
-                goal = tPos + Vector3.new(0, heightOffset, 0)
-            elseif RagebotMode == "Knife" then
-                -- Knife 모드: 상대방과 완전히 겹치도록 텔포
-                goal = tPos
+                local goal = tPos + Vector3.new(0, heightOffset, 0)
+                hrp.CFrame = CFrame.new(goal, tPos)
             end
-            
-            hrp.CFrame = CFrame.new(goal, tPos)
             return
         end
 
@@ -364,147 +368,7 @@ end)
 -- Combat 탭 UI 구성 (최상단 반영)
 -- ==========================================
 
--- 1. Aimbot 그룹박스 (Combat 탭 좌측 최상단)
-local AimbotGroup = Tabs.Combat:AddLeftGroupbox('Aimbot')
-
-AimbotGroup:AddToggle('AimbotEnable', {
-    Text = 'Enable Aimbot',
-    Default = false,
-    Callback = function(Value)
-        getgenv().elisium = getgenv().elisium or {}
-        getgenv().elisium.aimbot = getgenv().elisium.aimbot or {}
-        getgenv().elisium.aimbot.enable = Value
-    end
-})
-
-AimbotGroup:AddToggle('AimbotShowFOV', {
-    Text = 'Show FOV',
-    Default = false,
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.aimbot then
-            getgenv().elisium.aimbot.show_fov = Value
-        end
-    end
-}):AddColorPicker('AimbotFOVColor', {
-    Default = Color3.fromRGB(120, 81, 166),
-    Title = 'FOV Color',
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.aimbot then
-            getgenv().elisium.aimbot.fov_color = Value
-        end
-    end
-})
-
-AimbotGroup:AddSlider('AimbotFOVRadius', {
-    Text = 'FOV Radius',
-    Default = 180,
-    Min = 10,
-    Max = 800,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.aimbot then
-            getgenv().elisium.aimbot.fov_radius = Value
-        end
-    end
-})
-
-AimbotGroup:AddSlider('AimbotSmoothing', {
-    Text = 'Smoothing',
-    Default = 1,
-    Min = 1,
-    Max = 20,
-    Rounding = 1,
-    Compact = false,
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.aimbot then
-            getgenv().elisium.aimbot.smoothing = Value
-        end
-    end
-})
-
-AimbotGroup:AddToggle('AimbotClosestPart', {
-    Text = 'Target Closest Part',
-    Default = false,
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.aimbot then
-            getgenv().elisium.aimbot.closest_part = Value
-        end
-    end
-})
-
-
--- 2. Silent Aim 그룹박스 (Combat 탭 우측 최상단)
-local SilentAimGroup = Tabs.Combat:AddRightGroupbox('Silent Aim')
-
-SilentAimGroup:AddToggle('SilentAimEnable', {
-    Text = 'Enable Silent Aim',
-    Default = false,
-    Callback = function(Value)
-        getgenv().elisium = getgenv().elisium or {}
-        getgenv().elisium.silent_aim = getgenv().elisium.silent_aim or {}
-        getgenv().elisium.silent_aim.enable = Value
-    end
-})
-
-SilentAimGroup:AddToggle('SilentAimShowFOV', {
-    Text = 'Show FOV',
-    Default = false,
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.silent_aim then
-            getgenv().elisium.silent_aim.show_fov = Value
-        end
-    end
-}):AddColorPicker('SilentAimFOVColor', {
-    Default = Color3.fromRGB(120, 81, 166),
-    Title = 'FOV Color',
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.silent_aim then
-            getgenv().elisium.silent_aim.fov_color = Value
-        end
-    end
-})
-
-SilentAimGroup:AddSlider('SilentAimFOVRadius', {
-    Text = 'FOV Radius',
-    Default = 180,
-    Min = 10,
-    Max = 800,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.silent_aim then
-            getgenv().elisium.silent_aim.fov_radius = Value
-        end
-    end
-})
-
-SilentAimGroup:AddSlider('SilentAimHitChance', {
-    Text = 'Hit Chance',
-    Default = 100,
-    Min = 0,
-    Max = 100,
-    Rounding = 0,
-    Compact = false,
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.silent_aim then
-            getgenv().elisium.silent_aim.hit_chance = Value
-        end
-    end
-})
-
-SilentAimGroup:AddToggle('SilentAimClosestPart', {
-    Text = 'Target Closest Part',
-    Default = false,
-    Callback = function(Value)
-        if getgenv().elisium and getgenv().elisium.silent_aim then
-            getgenv().elisium.silent_aim.closest_part = Value
-        end
-    end
-})
-
-
--- 3. Ragebot 그룹박스 (Combat 탭 기존 항목 + Mode 드롭다운 추가)
+-- 3. Ragebot 그룹박스 (Combat 탭 기존 항목)
 local RagebotGroup = Tabs.Combat:AddLeftGroupbox('Ragebot')
 
 RagebotGroup:AddToggle('RagebotEnabled', {
@@ -516,12 +380,14 @@ RagebotGroup:AddToggle('RagebotEnabled', {
     end
 })
 
-RagebotGroup:AddDropdown('RagebotModeDropdown', {
+-- Ragebot 모드 선택 드롭다운 추가
+RagebotGroup:AddDropdown('RagebotModeSelect', {
     Values = { 'Gun', 'Knife' },
     Default = 1,
+    Multi = false,
     Text = 'Ragebot Mode',
     Callback = function(Value)
-        RagebotMode = Value
+        ragebotMode = Value
     end
 })
 
